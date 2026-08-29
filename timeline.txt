@@ -1,0 +1,164 @@
+#!/usr/bin/env python3
+"""
+build_timeline.py
+Muc dich: Doc nhieu file output tho cua Volatility, trich xuat moc thoi gian
+va su kien, gop lai thanh 1 timeline duy nhat, sap xep theo thu tu thoi gian.
+"""
+
+import re
+import csv
+
+# Danh sach cac su kien se duoc thu thap vao day, moi phan tu la 1 dict
+events = []
+
+# ----------------------------------------------------------------------
+# PHAN 1: Doc pslist_output.txt -> lay thoi diem khoi dong tung tien trinh
+# ----------------------------------------------------------------------
+def parse_pslist(filepath):
+    with open(filepath, "r", errors="ignore") as f:
+        lines = f.readlines()
+
+    for line in lines:
+        # Vi du dong that: WinRAR.exe    2924    1580    6    210    2   0  2019-12-20 03:46:50 UTC+0000
+        match = re.search(
+            r"(\S+\.exe|\S+\.EXE)\s+(\d+)\s+(\d+).*?(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})",
+            line
+        )
+        if match:
+            proc_name, pid, ppid, timestamp = match.groups()
+            events.append({
+                "timestamp": timestamp,
+                "source": "pslist",
+                "event": f"Tien trinh khoi dong: {proc_name} (PID={pid}, PPID={ppid})"
+            })
+
+# ----------------------------------------------------------------------
+# PHAN 2: Doc iehistory_full.txt -> lay thoi diem truy cap file/URL
+# ----------------------------------------------------------------------
+def parse_iehistory(filepath):
+    with open(filepath, "r", errors="ignore") as f:
+        content = f.read()
+
+    # Tach theo tung block du lieu (cach nhau boi dong sao ***)
+    blocks = content.split("*" * 50)
+
+    for block in blocks:
+        loc_match = re.search(r"Location:.*?:(.*)", block)
+        time_match = re.search(r"Last accessed:\s*(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})", block)
+        if loc_match and time_match:
+            events.append({
+                "timestamp": time_match.group(1),
+                "source": "iehistory",
+                "event": f"Truy cap: {loc_match.group(1).strip()[:80]}"
+            })
+
+# ----------------------------------------------------------------------
+# PHAN 4: Doc filescan_full.txt -> lay thoi diem file duoc tao/sua (neu co)
+# ----------------------------------------------------------------------
+def parse_filescan_notes(filepath):
+    with open(filepath, "r", errors="ignore") as f:
+        lines = f.readlines()
+
+    for line in lines:
+        if ".rar" in line.lower() or "notepad" in line.lower():
+            events.append({
+                "timestamp": "KHONG_RO_THOI_GIAN",
+                "source": "filescan",
+                "event": f"File/tien trinh dang chu y: {line.strip()[:100]}"
+            })
+
+# ----------------------------------------------------------------------
+# PHAN 3: Chay toan bo va xuat ra CSV
+# ----------------------------------------------------------------------
+def main():
+    parse_pslist("/home/giang/ctf-project/evidence/pslist_output.txt")
+    parse_iehistory("/home/giang/ctf-project/evidence/iehistory_full.txt")
+    parse_filescan_notes("/home/giang/ctf-project/evidence/filescan_full.txt")
+
+    # Sap xep theo thoi gian tang dan
+    events.sort(key=lambda e: e["timestamp"])
+
+    output_path = "/home/giang/ctf-project/evidence/unified_timeline.csv"
+    with open(output_path, "w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=["timestamp", "source", "event"])
+        writer.writeheader()
+        writer.writerows(events)
+
+    print(f"Da xuat {len(events)} su kien vao file: {output_path}")
+
+if __name__ == "__main__":
+    main()
+
+
+
+cat > ~/ctf-project/scripts/build_timeline.py << 'EOF'
+#!/usr/bin/env python3
+"""
+build_timeline.py
+Muc dich: Doc nhieu file output tho cua Volatility, trich xuat moc thoi gian
+va su kien, gop lai thanh 1 timeline duy nhat, sap xep theo thu tu thoi gian.
+"""
+import re
+import csv
+
+events = []
+
+def parse_pslist(filepath):
+    with open(filepath, "r", errors="ignore") as f:
+        lines = f.readlines()
+    for line in lines:
+        match = re.search(
+            r"(\S+\.exe|\S+\.EXE)\s+(\d+)\s+(\d+).*?(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})",
+            line
+        )
+        if match:
+            proc_name, pid, ppid, timestamp = match.groups()
+            events.append({
+                "timestamp": timestamp,
+                "source": "pslist",
+                "event": f"Tien trinh khoi dong: {proc_name} (PID={pid}, PPID={ppid})"
+            })
+
+def parse_iehistory(filepath):
+    with open(filepath, "r", errors="ignore") as f:
+        content = f.read()
+    blocks = content.split("*" * 50)
+    for block in blocks:
+        loc_match = re.search(r"Location:.*?:(.*)", block)
+        time_match = re.search(r"Last accessed:\s*(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})", block)
+        if loc_match and time_match:
+            events.append({
+                "timestamp": time_match.group(1),
+                "source": "iehistory",
+                "event": f"Truy cap: {loc_match.group(1).strip()[:80]}"
+            })
+
+def parse_filescan_notes(filepath):
+    with open(filepath, "r", errors="ignore") as f:
+        lines = f.readlines()
+    for line in lines:
+        if ".rar" in line.lower() or "notepad" in line.lower():
+            events.append({
+                "timestamp": "KHONG_RO_THOI_GIAN",
+                "source": "filescan",
+                "event": f"File/tien trinh dang chu y: {line.strip()[:100]}"
+            })
+
+def main():
+    parse_pslist("/home/giang/ctf-project/evidence/pslist_output.txt")
+    parse_iehistory("/home/giang/ctf-project/evidence/iehistory_full.txt")
+    parse_filescan_notes("/home/giang/ctf-project/evidence/filescan_full.txt")
+
+    events.sort(key=lambda e: e["timestamp"])
+
+    output_path = "/home/giang/ctf-project/evidence/unified_timeline.csv"
+    with open(output_path, "w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=["timestamp", "source", "event"])
+        writer.writeheader()
+        writer.writerows(events)
+
+    print(f"Da xuat {len(events)} su kien vao file: {output_path}")
+
+if __name__ == "__main__":
+    main()
+EOF
